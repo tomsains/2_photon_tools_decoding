@@ -1,0 +1,295 @@
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import glob as glob
+import pandas as pd
+import os
+import tqdm
+import sys
+import pickle
+
+from matplotlib import animation
+
+from matplotlib import animation, rc
+from IPython.display import HTML
+from scipy.signal import find_peaks
+
+from sklearn.preprocessing import LabelEncoder
+from scipy.ndimage import gaussian_filter1d
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.manifold import Isomap, TSNE
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Perceptron
+from sklearn.model_selection import train_test_split, LeaveOneOut
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn import svm
+from sklearn.neural_network import MLPClassifier
+from skimage.io import imread, imsave, concatenate_images
+from sklearn.metrics import pairwise_distances
+from scipy import stats
+from astropy.convolution import convolve, Gaussian1DKernel, Box1DKernel
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.stats import ttest_ind_from_stats
+
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
+from sklearn.model_selection import LeaveOneOut
+from skimage import io
+from skimage.external.tifffile import imread, TiffFile, imsave
+from skimage.filters import threshold_otsu
+from scipy import signal
+
+
+class data_set:
+    def __init__(self, folder, epoch_time_file, combine=False):
+        self.folder = folder
+        self.epoch_time_file = epoch_time_file
+        if combine == True:
+            self.F, self.C, self.img = self.combine_seg_planes(folder=self.folder)
+
+        if combine == False:
+            is_cell = np.load(self.folder + "suite2p/combined/iscell.npy")
+
+            c = np.load(self.folder + "suite2p/combined/stat.npy", allow_pickle=True)
+            self.C = np.c_[[l['med'] for l in c], [p['iplane'] for p in c]]
+
+            self.F = np.load(self.folder + "suite2p/combined/F.npy")[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
+
+            self.C = self.C[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
+            ops = np.load(self.folder + "/suite2p/ops1.npy", allow_pickle=True)
+            #self.mean_img = [l["meanImg"] for l in ops]
+
+        self.remove_zeros()
+        print("sorting_by_AP")
+        self.get_AP()
+        #self.sort_by_AP()
+        print("centering traces")
+        self.center_all_baselines()
+        print("calculating max min")
+        self.max_min_all()
+        print("calculating each cells noise")
+        self.all_cell_noise_thresh()
+
+        print("generate epoch_table")
+        self.make_epoch_table(self.epoch_time_file)
+        self.create_epoch_vector(self.epoch)
+
+        print("Smooting responses")
+        self.S_DFF = np.apply_along_axis(gaussian_filter1d, 1, self.DFF, 3)
+        print("Segmenting_Responses")
+        self.binarize(quick=True)
+        self.NCC = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC, epoch_times=self.epoch_vectors_list[0],
+                                       scale_f=0.1)
+        print("saving")
+        self.save()
+
+        # plt.imshow(self.DFF)
+        # plt.imshow(self.mask[2])
+        # plt.show()
+
+    def remove_zeros(self):
+        non_zeros = np.sum(self.F, axis=1) != 0
+        self.C = self.C[non_zeros, :].astype('uint16')
+        self.F = self.F[non_zeros, :]
+
+    def threshold_mean_img(self):
+        self.mask = [0] * len(self.mean_img)
+        for i in range(len(self.mean_img) - 1):
+            thresh = threshold_otsu(self.mean_img[i])
+            self.mask[i] = self.mean_img[i] > thresh
+
+    def apply_mask(self):
+        filter_vec = [0] * 5
+        for i in range(len(self.mask)):
+            plane_cells = np.array(self.C[self.C[:, 2] == i, :]).astype(int)
+            filter_vec[i] = self.mask[i][plane_cells[:, 0], plane_cells[:, 1]]
+        com_filter_vec = np.concatenate(filter_vec)
+        return (list([self.C[com_filter_vec, :], self.F[com_filter_vec, :]]))
+
+    def combine_seg_planes(folder):
+        planes = glob.glob(pathname=folder + "*/")[::-1]
+        F = list(range(len(planes)))
+        coord = list(range(len(planes)))
+        # is_cell = list(range(len(planes)))
+        m_img = list(range(len(planes)))
+        for i in range(len(planes)):
+            F[i] = np.load(planes[i] + "/suite2p/plane0/F.npy")
+            c = np.load(planes[i] + "/suite2p/plane0/stat.npy", allow_pickle=True)
+            coord[i] = np.c_[[l['med'] for l in c], np.repeat(i + 1, len(c)).T]
+            # is_cell [i] = np.load(planes [i] + "/suite2p/plane0/iscell.npy")
+            m_img[i] = np.load(planes[i] + "/suite2p/ops1.npy", allow_pickle=True)[0]["meanImg"]
+        return (list([np.concatenate(F), np.concatenate(coord), m_img]))
+
+    def baseline_centered_F(self, trace, window=8000, guass=300):
+        base_line = np.repeat(0, len(trace))
+        t = pd.Series((trace))
+        base_line = t.rolling(window=window, min_periods=2, center=True).quantile(.10)
+        base_line = np.apply_along_axis(gaussian_filter1d, 0, base_line, guass)
+        return ([base_line, (t - base_line), ((t - base_line) / base_line)])
+
+    def center_all_baselines(self):
+        self.base_line = np.zeros(self.F.shape)
+        self.DF = np.zeros(self.F.shape)
+        self.DFF = np.zeros(self.F.shape)
+        for i in range(self.F.shape[0]):
+            self.base_line[i, :], self.DF[i, :], self.DFF[i, :] = self.baseline_centered_F(self.F[i, :] + 5000)
+
+    def max_min(self, x, window=30, min_periods=10):
+        max_min = np.nanmax(pd.Series(x).rolling(window=window, min_periods=min_periods, center=True).min())
+        return (max_min)
+
+    def max_min_all(self):
+        self.max_min = np.apply_along_axis(self.max_min, arr=self.DFF, axis=1)
+
+    def NCC(self, trace, epoch_times, scale_f=4):
+        epoch_times = epoch_times[300:]
+        trace = trace[300:]
+        epoch_times = np.where(epoch_times > 0, 1, -1)
+        Px = np.sum(trace == 1) / len(trace)
+        NCC_value = np.sum(trace * epoch_times) / len(trace)
+        s = (np.sum(epoch_times == 1) - np.sum(epoch_times == -1)) / len(epoch_times)
+        x = 2 * (Px) - 1
+        sd_x = np.std(x)
+        return (list([NCC_value, scale_f * (sd_x)]))
+
+    def rotate_via_numpy(self, xy, radians):
+        """Use numpy to build a rotation matrix and take the dot product."""
+        x, y = xy
+        c, s = np.cos(radians), np.sin(radians)
+        j = np.array([[c, s], [-s, c]])
+        m = np.dot(j, [x, y])
+
+        return float(m.T[0]), float(m.T[1])
+
+    def get_AP(self):
+        AP = [0] * len(np.unique(self.C[:, 2]))
+        for i, p in enumerate(np.unique(self.C[:, 2])):
+            temp_c = self.C[self.C[:, 2] == p, 0:2]
+            temp_c[:, 0] = temp_c[:, 0] - np.min(temp_c[:, 0])
+            temp_c[:, 1] = temp_c[:, 1] - np.min(temp_c[:, 1])
+            AP[i] = np.apply_along_axis(arr=temp_c, func1d=self.rotate_via_numpy, axis=1, radians=50 * (np.pi / 180))
+        AP = np.concatenate(AP)[:, 1].ravel().argsort()
+        self.F = self.F[AP, :]
+        self.C = self.C[AP, :]
+
+
+    def cell_noise(self, t, window=6000, guass=1):
+        base_line = pd.Series(t).rolling(window=window, min_periods=2, center=True).quantile(.50)
+        new_t = np.apply_along_axis(gaussian_filter1d, 0, t, guass)
+        diff = np.diff(t)
+        estimated_noise = np.concatenate((diff[diff < 0], abs(diff[diff < 0])))
+        # noise_estimation = t.rolling(window=window, min_periods=2, center=True).quantile(.05)
+        return (np.quantile(estimated_noise + np.mean(base_line), 0.99))
+
+    def all_cell_noise_thresh(self):
+        self.cell_noise = np.apply_along_axis(arr=self.DFF, func1d=self.cell_noise, axis=1)
+
+    def seg_resp(self, trace, guass):
+        trace = np.apply_along_axis(gaussian_filter1d, 0, trace, guass)
+        base_line = pd.Series(trace).rolling(window=3000, min_periods=2, center=True).median().shift()
+        base_line_std = pd.Series(trace).rolling(window=3000, min_periods=2, center=True).std().shift()
+
+        resp = pd.Series(trace).rolling(window=50, min_periods=2, center=True).mean().shift()
+        resp_std = pd.Series(trace).rolling(window=50, min_periods=2, center=True).std().shift()
+
+        p = np.zeros(len(resp))
+
+        for i in range(len(p) - 10):
+            test = ttest_ind_from_stats(mean1=base_line[i], std1=base_line_std[i], nobs1=6000, mean2=resp[i + 1],
+                                        std2=resp_std[i + 1], nobs2=20)
+            if test[0] < 0:
+                p[i] = test[1]
+            else:
+                p[i] = 1
+
+        self.binarised = p < 0.05
+
+    def set_singles_to_zero(self, test, thresh=20):
+        new = np.append(test, [0]) * 1
+        diff = np.diff(new)
+        on = np.where(diff == 1)[0]
+        off = np.where(diff == -1)[0]
+        diff_off_on = (off - on) < thresh
+        print(off - on)
+        on = on[(diff_off_on)]
+        off = off[(diff_off_on)]
+
+        for i in range(len(on)):
+            new[int(on[i]):int(off[i] + 1)] = 0
+        return (new[:-1])
+
+    def quick_binarise(self, t, factor):
+        mean = np.mean(t)
+        std = np.std(t)
+        binary = t > (mean + (factor * std))
+        return(binary)
+
+
+    def binarize(self, quick = True):
+        if quick == True:
+            self.binary = np.apply_along_axis(arr=self.S_DFF, func1d=self.quick_binarise, factor = 3, axis=1)
+        if quick == False:
+            self.binary = np.apply_along_axis(arr=self.DFF, func1d=self.seg_resp, guass=1, axis=1)
+            self.binary = np.apply_along_axis(arr=self.binary, func1d=self.set_singles_to_zero, axis=1)
+
+    def plot_DFF_w_bin(self, cell_number):
+        plt.figure(figsize=(20, 10))
+        plt.plot(self.DFF[cell_number, :])
+        plt.plot(self.binary[cell_number, :])
+
+    def make_epoch_table(self, epoch_time_file, freq=9.7, offset=0):
+        epoch = pd.read_csv(epoch_time_file, delimiter=" ", header=None)
+        epoch.columns = ["sec", "stim_name", "textured"]
+        epoch["fr"] = ((epoch["sec"] + offset) * freq).astype(int)
+        self.epoch = epoch
+
+    def create_epoch_vector(self, epoch, extend_epoch=0):
+        start = epoch["fr"].iloc[list(range(0, epoch.shape[0], 2))].values
+        end = epoch["fr"].iloc[list(range(1, epoch.shape[0], 2))].values
+        if np.isfinite(extend_epoch):
+            end = end + extend_epoch
+
+        epoch_locations = np.repeat(0, self.DFF.shape[1])
+        epoch_names = epoch["stim_name"].iloc[list(range(0, epoch.shape[0], 2))]
+        texture = epoch["textured"].iloc[list(range(0, epoch.shape[0], 2))]
+        counter = 1
+        for i in range(len(start)):
+            epoch_locations[start[i]:end[i]] = counter
+            counter += 1
+        self.epoch_vectors_list = list([epoch_locations, epoch_names, texture])
+
+    def plot_trace_w_epochs(self, cell_number):
+        epoch_start = self.epoch["fr"][::2]
+        epoch_end = self.epoch["fr"][1::2]
+        plt.figure(figsize=(20, 5))
+        for index, (start, stop) in enumerate(zip(epoch_start, epoch_end)):
+            plt.axvspan(start, stop + (9.7 * 4), alpha=0.2, color='gray')
+            # plt.annotate(e ["stim_name"] [::2].iloc [index][-1], (-2, np.mean(start + stop)), size =0.1)
+            # print(e ["stim_name"] [::2].iloc [index][-1])
+            plt.annotate(str(self.epoch["stim_name"][::2].iloc[index][-1]), (start, -0.002), size=15)
+        plt.plot(self.DFF[cell_number, :])
+
+    def save(self):
+        object_to_save = dict({"folder": self.folder,
+                               "epoch_folder": self.epoch_time_file,
+                               "centers": self.C,
+                               "F": self.F,
+                               "DFF": self.DFF,
+                               "S_DFF": self.S_DFF,
+                               "max_min": self.max_min,
+                               "noise_thresh": self.cell_noise,
+                               "NCC": self.NCC,
+                               "epoch_table": self.epoch,
+                               "epoch_vectors": self.epoch_vectors_list})
+        file = open(self.folder + 'data_set.pickle', 'wb')
+        file.write(pickle.dumps(object_to_save))
+        file.close()
+
+
+dat = data_set(folder="/media/thomas_sainsbury/Samsung_T5/Decoding/200807_H2BGC6S_DC/",
+               epoch_time_file="/media/thomas_sainsbury/Samsung_T5/Decoding/200807_H2BGC6S_NR_F1_stim/time_epoches.log")
+
+
