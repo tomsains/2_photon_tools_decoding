@@ -1,22 +1,37 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from oasis.functions import gen_data, gen_sinusoidal_data, deconvolve, estimate_parameters
 
+import os
 from oasis.oasis_methods import oasisAR1, oasisAR2
 from scipy import stats
 import psutil
 
+from oasis.functions import deconvolve, estimate_parameters
 
 
 class traces:
-    def __init__(self, folder, data_set_name):
-        self.folder = folder
-        self.data_set_name = data_set_name
-        self.traces = np.loadtxt(self.folder + self.data_set_name)
-        print("calulating deconvolved")
-        self.Apply_DFF()
+    def __init__(self, condition_folder, dataset_name, DFF_exists = False):
+        self.folder = condition_folder
+        self.dataset_name = dataset_name
+        print(self.folder + self.dataset_name + "/suite2p/combined/F.npy")
+        self.traces = np.load(self.folder + self.dataset_name + "/suite2p/combined/F.npy")
+        print("calulating DFF ...")
+        if os.path.isdir(self.folder + self.dataset_name + "/preprocessed") == False:
+            os.mkdir(self.folder + self.dataset_name + "/preprocessed")
+
+        if DFF_exists == False:
+            self.Apply_DFF()
+        else:
+            is_cell = np.load(self.folder + "suite2p/combined/iscell.npy")
+            c = np.load(self.folder + "suite2p/combined/stat.npy", allow_pickle=True)
+            self.C = np.c_[[l['med'] for l in c], [p['iplane'] for p in c]]
+            self.F = np.load(self.folder + "suite2p/combined/F.npy")[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
+            self.C = self.C[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
+
+        print("calulating deconvolved ... ")
         self.apply_oasis()
+
 
 
     def apply_oasis(self, pen = 1):
@@ -35,7 +50,7 @@ class traces:
         return (c, s)
 
     def AR1_model_deconvole(self, trace, smin=0.7):
-        c, s = oasisAR1(trace, g=np.exp(-1 / (1.6 * 4.85)), s_min=smin)
+        c, s = oasisAR1(trace, g=np.exp(-1 / (1.6 * 9.7)), s_min=smin)
         return (c, s)
 
     def plot_oasis_output(self, cell = range(0,10)):
@@ -61,17 +76,15 @@ class traces:
 
 
 
-    def base_line(self, t, win = 6000):
+    def base_line(self, t, win = 8000):
         S = pd.Series(t)
         baseline = S.rolling(window = win, center = True, min_periods = 2).quantile(.3)
         return(baseline)
 
 
-
-
-    def DFF_detrend_smooth(self, trace, window = 6000):
+    def DFF_detrend_smooth(self, trace, window = 8000):
         # smooth = butter_lowpass_filter(trace+1, cutoff_freq = 1, nyq_freq = 10/(4.85/2))
-        smooth = trace + 1
+        smooth = trace + 1000
         baseline = self.base_line(smooth, win=window)
         df = smooth - baseline
         return(df / baseline)
@@ -79,7 +92,9 @@ class traces:
     def Apply_DFF(self):
         self.DFF = np.zeros((self.traces.shape))
         for i in range(self.traces.shape[0]):
-            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=6000))
+            if i % 500 == 0:
+                print(i)
+            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=8000))
 
 
     def plot_cell(self, number):
