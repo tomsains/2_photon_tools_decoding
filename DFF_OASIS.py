@@ -14,20 +14,20 @@ class traces:
     def __init__(self, condition_folder, dataset_name, DFF_exists = False):
         self.folder = condition_folder
         self.dataset_name = dataset_name
-        print(self.folder + self.dataset_name + "/suite2p/combined/F.npy")
-        self.traces = np.load(self.folder + self.dataset_name + "/suite2p/combined/F.npy")
+
         print("calulating DFF ...")
         if os.path.isdir(self.folder + self.dataset_name + "/preprocessed") == False:
             os.mkdir(self.folder + self.dataset_name + "/preprocessed")
 
         if DFF_exists == False:
+            is_cell = np.load(self.folder + self.dataset_name + "/suite2p/combined/iscell.npy")
+            c = np.load(self.folder + self.dataset_name + "/suite2p/combined/stat.npy", allow_pickle=True)
+            self.Centers = np.c_[[l['med'] for l in c], [p['iplane'] for p in c]]
+            self.traces = np.load(self.folder + self.dataset_name + "/suite2p/combined/F.npy")[(is_cell[:, 1] > 0.5) & (self.Centers[:, 2] != 5.), :]
+            self.Centers = self.Centers[(is_cell[:, 1] > 0.5) & (self.Centers[:, 2] != 5.), :]
             self.Apply_DFF()
         else:
-            is_cell = np.load(self.folder + "suite2p/combined/iscell.npy")
-            c = np.load(self.folder + "suite2p/combined/stat.npy", allow_pickle=True)
-            self.C = np.c_[[l['med'] for l in c], [p['iplane'] for p in c]]
-            self.F = np.load(self.folder + "suite2p/combined/F.npy")[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
-            self.C = self.C[(is_cell[:, 1] > 0.5) & (self.C[:, 2] != 5.), :]
+            self.DFF = np.load(self.folder + dataset_name + "/" + dataset_name + "_DFF.npy")
 
         print("calulating deconvolved ... ")
         self.apply_oasis()
@@ -42,6 +42,8 @@ class traces:
         self.s_AR1 = np.zeros((shape_DFF))
 
         for i in range(shape_DFF[0]):
+           if i % 500 == 0:
+               print(i)
            self.c_AR1[i, :], self.s_AR1 [i, :] = self.AR1_model_deconvole(self.DFF[i,])
            self.c[i, :], self.s[i, :] = self.deconvolve_trace(self.DFF [i,], penalty=1)
 
