@@ -15,7 +15,6 @@ class traces:
     def __init__(self, condition_folder, dataset_name, DFF_exists = False, save_rand_traces = False):
         self.folder = condition_folder
         self.dataset_name = dataset_name
-
         print("calulating DFF ...")
         if os.path.isdir(self.folder + self.dataset_name + "/preprocessed") == False:
             os.mkdir(self.folder + self.dataset_name + "/preprocessed")
@@ -153,6 +152,7 @@ def apply_oasis(condition_folder):
     data_sets = [os.path.basename(x) for x in glob.glob(condition_folder +"/*_im_*")]
     print(len(data_sets))
     for d in data_sets:
+        if os.path.isdir(condition_folder + "/" + d + "/suite2p") == True:
             print("processing .... " + d )
             t = traces(condition_folder=condition_folder + "/", dataset_name=d)
             np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_DFF.npy", arr=t.DFF)

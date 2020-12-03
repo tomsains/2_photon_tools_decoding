@@ -47,27 +47,27 @@ class data_set:
     def __init__(self, folder, dataset_name, deconvolution_method="estimated"):
         self.folder = folder
         self.dataset_name = dataset_name
+
         self.epoch_time_file = self.folder + self.dataset_name + "/preprocessed/time_epoches.log"
         self.DFF = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_DFF.npy")
         self.sample_rate = 9.7
         self.Centers = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_cell_centers.npy")
         self.deconvolution_method = deconvolution_method
-        # load deconvolution output, based on chosen method
+            # load deconvolution output, based on chosen method
         print("loading_deconvolved_data")
         if deconvolution_method == "estimated":
             self.Calcium = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_oasis_c.npy")
             self.Spikes = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_oasis_s.npy")
 
         if deconvolution_method == "AR1":
-            self.Calcium = np.load(
-                self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_oasisAR1_c.npy")
+            self.Calcium = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_oasisAR1_c.npy")
             self.Spikes = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_oasisAR1_s.npy")
 
-        # Sort cells based on their ant-post axis within the tectum
+            # Sort cells based on their ant-post axis within the tectum
         print("AP sorting")
         self.get_AP()
 
-        # Genterate epoch labels data frame
+            # Genterate epoch labels data frame
         self.make_epoch_table()
         self.create_epoch_vector()
 
@@ -75,17 +75,17 @@ class data_set:
         self.binary = (self.Spikes > 0.002) * 1
         print("generate epoch_table")
         self.NCC_val = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC,
-                                           epoch_times=self.epoch_vectors_list[0],
-                                           scale_f=0.025)
+                                            epoch_times=self.epoch_vectors_list[0],
+                                            scale_f=0.025)
 
         print("saving")
-        # self.save()
+        self.save()
 
-        # print("making_plots")
-        # if os.path.isdir(self.folder + self.dataset_name + "/preprocessed/plots") == False:
-        #   os.mkdir(self.folder + self.dataset_name + "/preprocessed/plots")
+        print("making_plots")
+        if os.path.isdir(self.folder + self.dataset_name + "/preprocessed/plots") == False:
+            os.mkdir(self.folder + self.dataset_name + "/preprocessed/plots")
 
-        # self.plot_rasters()
+        self.plot_rasters()
 
     # methods
 
@@ -185,11 +185,20 @@ class data_set:
                                "DFF": self.DFF,
                                "Spikes": self.Spikes,
                                "Calcium": self.Calcium,
-                               "NCC": self.NCC,
+                               "NCC": self.NCC_val,
                                "epoch_table": self.epoch,
                                "epoch_vectors": self.epoch_vectors_list})
-        file = open(
-            self.folder + self.dataset_name + '/preprocessed/' + "data_set_object_" + self.deconvolution_method + '.pickle',
-            'wb')
-        file.write(pickle.dumps(object_to_save))
-        file.close()
+        np.save(self.folder + self.dataset_name + '/preprocessed/' + "data_set_object_" + self.deconvolution_method + '.npy', object_to_save, allow_pickle=True)
+
+
+def apply_build_data_for_decoder(condition_folder):
+    print(condition_folder)
+
+    data_sets = [os.path.basename(x) for x in glob.glob(condition_folder +"/*_im_*")]
+    print(len(data_sets))
+    for d in data_sets:
+        if os.path.isdir(condition_folder + "/" + d + "/suite2p") == True:
+            print("processing .... " + d )
+            data_set(condition_folder=condition_folder + "/", dataset_name=d)
+
+
