@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import glob
 
 import os
 from oasis.oasis_methods import oasisAR1, oasisAR2
@@ -11,7 +12,7 @@ from oasis.functions import deconvolve, estimate_parameters
 
 
 class traces:
-    def __init__(self, condition_folder, dataset_name, DFF_exists = False):
+    def __init__(self, condition_folder, dataset_name, DFF_exists = False, save_rand_traces = False):
         self.folder = condition_folder
         self.dataset_name = dataset_name
 
@@ -55,19 +56,8 @@ class traces:
         c, s = oasisAR1(trace, g=np.exp(-1 / (1.6 * 9.7)), s_min=smin)
         return (c, s)
 
-    def plot_oasis_output(self, cell = range(0,10)):
-        fig, axs = plt.subplots(len(cell), 1, figsize=(15, 6), facecolor='w', edgecolor='k')
-        fig.subplots_adjust(hspace=.0, wspace=.001)
 
-        axs = axs.ravel()
 
-        for i, c in enumerate(cell):
-            print(str(i))
-            print(self.b[c])
-            axs[i].plot(self.b [c] + self.c [c,:], lw=2, label='denoised')
-            axs[i].plot(self.traces [c,:])
-            axs[i].plot(self.s [c] - 0.2)
-        plt.show()
 
     def raster_plot(self):
         spikes = self.s > 0.08
@@ -84,9 +74,9 @@ class traces:
         return(baseline)
 
 
-    def DFF_detrend_smooth(self, trace, window = 8000):
+    def DFF_detrend_smooth(self, trace, window = 8000*2):
         # smooth = butter_lowpass_filter(trace+1, cutoff_freq = 1, nyq_freq = 10/(4.85/2))
-        smooth = trace + 1000
+        smooth = trace + 5000
         baseline = self.base_line(smooth, win=window)
         df = smooth - baseline
         return(df / baseline)
@@ -96,7 +86,7 @@ class traces:
         for i in range(self.traces.shape[0]):
             if i % 500 == 0:
                 print(i)
-            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=8000))
+            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=8000*2))
 
 
     def plot_cell(self, number):
@@ -154,3 +144,23 @@ class correlations:
                 print(psutil.virtual_memory())
 
         self.nullcorrs = np.apply_along_axis(func1d=np.quantile, arr=self.nullcorrs, axis=2, q=.99)
+
+
+
+def apply_oasis(condition_folder):
+    print(condition_folder)
+
+    data_sets = [os.path.basename(x) for x in glob.glob(condition_folder +"/*_im_*")]
+    print(len(data_sets))
+    for d in data_sets:
+            print("processing .... " + d )
+            t = traces(condition_folder=condition_folder + "/", dataset_name=d)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_DFF.npy", arr=t.DFF)
+            print("saving ....")
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasis_s.npy", arr= t.s)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasis_c.npy", arr=t.c)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasisAR1_s.npy", arr= t.s_AR1)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasisAR1_c.npy", arr=t.c_AR1)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_cell_centers.npy", arr=t.Centers)
+
+

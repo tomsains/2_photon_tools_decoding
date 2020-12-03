@@ -41,3 +41,6 @@ from skimage import io
 from skimage.external.tifffile import imread, TiffFile, imsave
 from skimage.filters import threshold_otsu
 from scipy import signal
+
+
+class
