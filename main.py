@@ -21,10 +21,12 @@ if __name__ == '__main__':
     if build_decoder_data_set == True:
         apply_build_data_for_decoder(condition_folder=main_folder + "DC_WT_GR_7_dpf")
         apply_build_data_for_decoder(condition_folder=main_folder + "DC_WT_NR_7_dpf")
+        apply_build_data_for_decoder(condition_folder=main_folder + "DC_WT_DR_7_dpf")
 
     if decode_stim == True:
-        apply_decoders(condition_folder=main_folder + "DC_WT_GR_7_dpf/")
+        apply_decoders(condition_folder=main_folder + "DC_WT_GR_7_dpf")
         apply_decoders(condition_folder=main_folder + "DC_WT_NR_7_dpf")
+        apply_decoders(condition_folder=main_folder + "DC_WT_DR_7_dpf")
 
 
 

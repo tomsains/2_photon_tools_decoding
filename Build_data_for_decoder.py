@@ -47,8 +47,7 @@ class data_set:
     def __init__(self, folder, dataset_name, deconvolution_method="estimated"):
         self.folder = folder
         self.dataset_name = dataset_name
-
-        self.epoch_time_file = self.folder + self.dataset_name + "/preprocessed/time_epoches.log"
+        self.epoch_time_file = self.folder + self.dataset_name + "/Imaging_logs/time_epoches.log"
         self.DFF = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_DFF.npy")
         self.sample_rate = 9.7
         self.Centers = np.load(self.folder + self.dataset_name + "/preprocessed/" + dataset_name + "_cell_centers.npy")
@@ -72,11 +71,12 @@ class data_set:
         self.create_epoch_vector()
 
         # binarise traces and calculate the NCC for each neuron
-        self.binary = (self.Spikes > 0.002) * 1
+        self.binary = (self.Spikes > 0.001) * 1
         print("generate epoch_table")
+
         self.NCC_val = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC,
                                             epoch_times=self.epoch_vectors_list[0],
-                                            scale_f=0.025)
+                                            scale_f=1)
 
         print("saving")
         self.save()
@@ -84,8 +84,6 @@ class data_set:
         print("making_plots")
         if os.path.isdir(self.folder + self.dataset_name + "/preprocessed/plots") == False:
             os.mkdir(self.folder + self.dataset_name + "/preprocessed/plots")
-
-        self.plot_rasters()
 
     # methods
 
@@ -173,10 +171,11 @@ class data_set:
 
     def plot_rasters(self, ratio=4):
         fig, ax = plt.subplots(3, figsize=(60, 20), sharex='col')
-        ax[0].imshow(self.DFF[self.NCC_val[:, 0] > self.NCC_val[:, 1], :], aspect=ratio)
-        ax[1].imshow(self.Calcium[self.NCC_val[:, 0] > self.NCC_val[:, 1], :], aspect=ratio)
-        ax[2].imshow(self.Spikes[self.NCC_val[:, 0] > self.NCC_val[:, 1], :], aspect=ratio, vmax=0.01)
-        plt.savefig(self.folder + self.dataset_name + "/preprocessed/plots/" + self.dataset_name + "_raster_plots.png")
+        ncc_filt = self.NCC_val[:, 0] > (self.NCC_val[:, 1] * 0.025)
+        ax[0].imshow(self.DFF[ncc_filt, :], aspect=ratio)
+        ax[1].imshow(self.Calcium[ncc_filt, :], aspect=ratio)
+        ax[2].imshow(self.Spikes[ncc_filt, :], aspect=ratio, vmax=0.01)
+        plt.savefig(self.folder + self.dataset_name + "/preprocessed/plots/" + self.dataset_name + self.deconvolution_method + "_raster_plots.png")
 
     def save(self):
         object_to_save = dict({"folder": self.folder,
@@ -199,6 +198,6 @@ def apply_build_data_for_decoder(condition_folder):
     for d in data_sets:
         if os.path.isdir(condition_folder + "/" + d + "/suite2p") == True:
             print("processing .... " + d )
-            data_set(condition_folder=condition_folder + "/", dataset_name=d)
+            data_set(folder=condition_folder + "/", dataset_name=d)
 
 

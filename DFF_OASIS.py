@@ -31,6 +31,7 @@ class traces:
 
         print("calulating deconvolved ... ")
         self.apply_oasis()
+        self.S_DFF = np.apply_along_axis(arr=self.DFF, func1d=self.smoothed_trace, axis=1)
 
 
 
@@ -69,7 +70,7 @@ class traces:
 
     def base_line(self, t, win = 8000):
         S = pd.Series(t)
-        baseline = S.rolling(window = win, center = True, min_periods = 2).quantile(.3)
+        baseline = S.rolling(window = win, center = True, min_periods = 2).quantile(.2)
         return(baseline)
 
 
@@ -85,7 +86,7 @@ class traces:
         for i in range(self.traces.shape[0]):
             if i % 500 == 0:
                 print(i)
-            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=8000*2))
+            self.DFF[i, :] = np.array(self.DFF_detrend_smooth(self.traces [i,:] ,window=8000*3))
 
 
     def plot_cell(self, number):
@@ -102,9 +103,8 @@ class traces:
 
     def smoothed_trace(self, t):
         S = pd.Series(t)
-        smooth = S.rolling(window=100, win_type='gaussian', center=True).mean(std =5)
-        return(smooth)
-
+        smooth = S.rolling(window=10, win_type='gaussian', center=True).mean(std=4)
+        return (smooth)
 
 class correlations:
     def __init__(self, folder, data_set_name, deconvolution_method="AR1", iter = 200):
@@ -146,16 +146,18 @@ class correlations:
 
 
 
-def apply_oasis(condition_folder):
+def apply_oasis(condition_folder, start_from = 0):
     print(condition_folder)
 
     data_sets = [os.path.basename(x) for x in glob.glob(condition_folder +"/*_im_*")]
+    data_sets = data_sets [start_from:]
     print(len(data_sets))
     for d in data_sets:
         if os.path.isdir(condition_folder + "/" + d + "/suite2p") == True:
             print("processing .... " + d )
             t = traces(condition_folder=condition_folder + "/", dataset_name=d)
             np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_DFF.npy", arr=t.DFF)
+            np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "S_DFF.npy", arr=t.S_DFF)
             print("saving ....")
             np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasis_s.npy", arr= t.s)
             np.save(file=condition_folder + "/" + d + "/preprocessed/" + d + "_oasis_c.npy", arr=t.c)
