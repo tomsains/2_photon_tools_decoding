@@ -68,8 +68,9 @@ class decode:
 
         self.apply_S_DFF()
 
-        self.decode_all_data_types()
-        self.decode_all_data_types(decoder="LDA")
+        self.decoder_spikes_and_cal()
+        #self.decode_all_data_types()
+        #self.decode_all_data_types(decoder="LDA")
 
 
     def smoothed_trace(self, t):
@@ -86,7 +87,7 @@ class decode:
 
     def NCC_filter(self):
 
-        self.NCC = (self.NCC[:, 0] > (self.NCC[:, 1]* self.NCC_scaler))
+        self.NCC = (self.NCC[:, 0] > (self.NCC[:, 1] + (self.NCC_scaler * self.NCC [:,2])))
         self.Spikes = self.Spikes[self.NCC, :]
         self.DFF = self.DFF[self.NCC, :]
         self.Calcium = self.Calcium[self.NCC, :]
@@ -149,7 +150,7 @@ class decode:
         predicts = cross_val_predict(pipe, data, labels, cv=cv)
         return (pd.DataFrame({"labels": labels, "texture": texture, "predicts": predicts, "scores": scores}))
 
-    def decoder_score_table(self, data_type, method="max", decoder="logreg"):
+    def decoder_score_table(self, data_type, dt_name, method="max", decoder="logreg"):
         self.textured_filter(traces=data_type, texture=0, method=method)
         non_textured_decoder_output = self.decode_score(data=self.decoder_input[0], labels=self.decoder_input[1],
                                                         texture=self.decoder_input[2], decoder=decoder)
@@ -159,26 +160,34 @@ class decode:
         self.decoder_scores = pd.concat([non_textured_decoder_output, textured_decoder_output])
         #print(self.decoder_scores.groupby(['texture', 'labels']).mean())
         #print(self.decoder_scores.groupby(['texture']).mean())
-        np.save(file=self.folder + self.dataset_name + "/decoder_results/" + self.dataset_name + "_" +
-                     self.deconvolution_method + "_" + data_type + "_" + decoder +
-                     "_" + method + "_decoder_score.dat", arr=self.decoder_scores)
+
+        np.save(file=self.folder + self.dataset_name + "/decoder_results/" + self.dataset_name + "_" + self.deconvolution_method + "_" + dt_name + "_" + decoder + "_" + method + "_decoder_score.npy", arr=self.decoder_scores)
 
     def decode_all_data_types(self, decoder = "logreg"):
         print("Calcium:")
-        self.decoder_score_table(data_type=self.Calcium, method="max", decoder = decoder)
-        self.decoder_score_table(data_type=self.Calcium, method="mean", decoder = decoder)
+        self.decoder_score_table(data_type=self.Calcium, dt_name="Cal", method="max", decoder = decoder)
+        self.decoder_score_table(data_type=self.Calcium, dt_name="Cal", method="mean", decoder = decoder)
 
         print("Spikes: ")
-        self.decoder_score_table(data_type=self.Spikes, method="mean", decoder = decoder)
-        self.decoder_score_table(data_type=self.Spikes, method="sum", decoder = decoder)
+        self.decoder_score_table(data_type=self.Spikes, dt_name="Spikes", method="mean", decoder = decoder)
+        self.decoder_score_table(data_type=self.Spikes, dt_name="Spikes", method="sum", decoder = decoder)
 
         print("DFF_S:")
-        self.decoder_score_table(data_type=self.S_DFF, method="max", decoder = decoder)
-        self.decoder_score_table(data_type=self.S_DFF, method="mean", decoder = decoder)
+        self.decoder_score_table(data_type=self.S_DFF, dt_name="DFF_S", method="max", decoder = decoder)
+        self.decoder_score_table(data_type=self.S_DFF, dt_name="DFF_S", method="mean", decoder = decoder)
 
         print("DFF : ")
-        self.decoder_score_table(data_type=self.DFF, method="max", decoder = decoder)
-        self.decoder_score_table(data_type=self.DFF, method="mean", decoder = decoder)
+        self.decoder_score_table(data_type=self.DFF, dt_name="DFF", method="max", decoder = decoder)
+        self.decoder_score_table(data_type=self.DFF, dt_name="DFF", method="mean", decoder = decoder)
+
+    def decoder_spikes_and_cal(self, decoder = "logreg"):
+        print("Calcium:")
+        self.decoder_score_table(data_type=self.Calcium, dt_name="Cal", method="max", decoder=decoder)
+        self.decoder_score_table(data_type=self.Calcium, dt_name="Cal", method="mean", decoder=decoder)
+
+        print("Spikes: ")
+        self.decoder_score_table(data_type=self.Spikes, dt_name="Spikes", method="mean", decoder=decoder)
+        self.decoder_score_table(data_type=self.Spikes, dt_name="Spikes", method="sum", decoder=decoder)
 
 
 

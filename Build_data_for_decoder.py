@@ -71,12 +71,11 @@ class data_set:
         self.create_epoch_vector()
 
         # binarise traces and calculate the NCC for each neuron
-        self.binary = (self.Spikes > 0.001) * 1
+        self.binary = (self.Spikes > 0.01) * 1
         print("generate epoch_table")
 
         self.NCC_val = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC,
-                                            epoch_times=self.epoch_vectors_list[0],
-                                            scale_f=1)
+                                            epoch_times=self.epoch_vectors_list[0])
 
         print("saving")
         self.save()
@@ -87,7 +86,8 @@ class data_set:
 
     # methods
 
-    def NCC(self, trace, epoch_times, scale_f=0.025):
+    def NCC(self, trace, epoch_times):
+        # Tom Shall uses 0.025
         epoch_times = epoch_times[300:]
         trace = trace[300:]
         trace = np.where(trace > 0, 1, -1)
@@ -105,7 +105,7 @@ class data_set:
 
         threshMean = (np.mean(trace)) * np.mean(epoch_times)
         threshSD = np.std(trace)
-        return (list([NCC_value, (threshMean + (scale_f * threshSD))]))
+        return (list([NCC_value, threshMean, threshSD]))
 
     def rotate_via_numpy(self, xy, radians):
         """Use numpy to build a rotation matrix and take the dot product."""
@@ -171,7 +171,7 @@ class data_set:
 
     def plot_rasters(self, ratio=4):
         fig, ax = plt.subplots(3, figsize=(60, 20), sharex='col')
-        ncc_filt = self.NCC_val[:, 0] > (self.NCC_val[:, 1] * 0.025)
+        ncc_filt = self.NCC_val[:, 0] > (self.NCC_val[:, 1] + (0.025*self.NCC_val [:,2]))
         ax[0].imshow(self.DFF[ncc_filt, :], aspect=ratio)
         ax[1].imshow(self.Calcium[ncc_filt, :], aspect=ratio)
         ax[2].imshow(self.Spikes[ncc_filt, :], aspect=ratio, vmax=0.01)
