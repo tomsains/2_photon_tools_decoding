@@ -12,7 +12,7 @@ if __name__ == '__main__':
     main_folder = "/media/thomas_sainsbury/Samsung_T5/Decoding_Multiple_stim/"
     decon = False
     build_decoder_data_set = False
-    decode_stim = False
+    decode_stim = True
     plot_results = True
 
 

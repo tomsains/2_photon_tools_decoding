@@ -71,25 +71,21 @@ class data_set:
         self.create_epoch_vector()
 
         # binarise traces and calculate the NCC for each neuron
-        self.binary = (self.Spikes > 0.01) * 1
+        self.binary = (self.Calcium > 0.05) * 1
         print("generate epoch_table")
 
-        self.NCC_val = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC,
-                                            epoch_times=self.epoch_vectors_list[0])
+        self.NCC_val = np.apply_along_axis(arr=self.binary, axis=1, func1d=self.NCC_both_epochs,
+                                            epoch_times=self.epoch_vectors_list[0], texture = self.epoch_vectors_list[2])
 
         print("saving")
         self.save()
 
-        print("making_plots")
-        if os.path.isdir(self.folder + self.dataset_name + "/preprocessed/plots") == False:
-            os.mkdir(self.folder + self.dataset_name + "/preprocessed/plots")
+        #print("making_plots")
+        #if os.path.isdir(self.folder + self.dataset_name + "/preprocessed/plots") == False:
+        #os.mkdir(self.folder + self.dataset_name + "/preprocessed/plots")
 
     # methods
-
     def NCC(self, trace, epoch_times):
-        # Tom Shall uses 0.025
-        epoch_times = epoch_times[300:]
-        trace = trace[300:]
         trace = np.where(trace > 0, 1, -1)
         epoch_times = np.where(epoch_times > 0, 1, -1)
         Px = np.sum(trace == 1) / len(trace)
@@ -102,10 +98,20 @@ class data_set:
         # else:
         #   u = 0
         #  std_u = 0
-
         threshMean = (np.mean(trace)) * np.mean(epoch_times)
         threshSD = np.std(trace)
-        return (list([NCC_value, threshMean, threshSD]))
+        return(list([NCC_value, threshMean, threshSD]))
+
+    def NCC_both_epochs(self, trace, epoch_times, texture):
+        # Tom Shall uses 0.025
+        epoch_times = epoch_times[300:]
+        trace = trace[300:]
+        first_half = self.NCC(trace [:19473], epoch_times [:19473])
+        second_half = self.NCC(trace [19473:], epoch_times [19473:])
+        if texture [0] == 0:
+            return (first_half + second_half)
+        elif texture [0] == 1:
+            return (second_half + first_half)
 
     def rotate_via_numpy(self, xy, radians):
         """Use numpy to build a rotation matrix and take the dot product."""
@@ -134,7 +140,7 @@ class data_set:
         plt.plot(self.DFF[cell_number, :])
         plt.plot(self.binary[cell_number, :])
 
-    def make_epoch_table(self, offset=1):
+    def make_epoch_table(self, offset=0):
         print("creating epoch_table")
         epoch = pd.read_csv(self.epoch_time_file, delimiter=" ", header=None)
         epoch.columns = ["sec", "stim_name", "textured"]

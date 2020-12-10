@@ -59,16 +59,18 @@ class decode:
         self.Spikes = object.item()['Spikes']
         self.Calcium = object.item()['Calcium']
         self.DFF = object.item()['DFF']
-        self.NCC = object.item()['NCC']
+        self.NCC_val = object.item()['NCC']
+        #print(self.NCC_val)
 
         self.epoch_table = object.item()['epoch_table']
         self.epoch_vectors = object.item()['epoch_vectors']
-        self.NCC_filter()
+
         self.make_epoch_labels()
 
-        self.apply_S_DFF()
+        #self.apply_S_DFF()
 
         self.decoder_spikes_and_cal()
+        self.NCC_curve()
         #self.decode_all_data_types()
         #self.decode_all_data_types(decoder="LDA")
 
@@ -85,12 +87,12 @@ class decode:
                 print(i)
             self.S_DFF[i, :] = np.array(self.smoothed_trace(self.DFF[i, :]))
 
-    def NCC_filter(self):
-
-        self.NCC = (self.NCC[:, 0] > (self.NCC[:, 1] + (self.NCC_scaler * self.NCC [:,2])))
-        self.Spikes = self.Spikes[self.NCC, :]
-        self.DFF = self.DFF[self.NCC, :]
-        self.Calcium = self.Calcium[self.NCC, :]
+    def NCC_filter(self, traces, NCC_scaler, texture = 0):
+        if texture == 0:
+            NCC = (self.NCC_val[:, 0] > (self.NCC_val[:, 1] + (self.NCC_val[:, 2] * NCC_scaler)))
+        elif texture == 1:
+            NCC = (self.NCC_val[:, 3] > (self.NCC_val[:, 4] + (self.NCC_val[:, 5] * NCC_scaler)))
+        return(traces [NCC,:])
 
     def make_epoch_labels(self):
         le = LabelEncoder().fit(y=self.epoch_vectors[1][1:])
@@ -101,11 +103,11 @@ class decode:
         self.epoch_labels = pd.DataFrame(
             {"epoch_name": self.epoch_vectors[1][1:], "epoch_label": labels, "texture": self.epoch_vectors[2][1:],
              "texture_label": text_lab})
-        print(self.epoch_labels["epoch_name"])
-        print(self.epoch_labels["epoch_label"])
+        #print(self.epoch_labels["epoch_name"])
+        #print(self.epoch_labels["epoch_label"])
 
-    def epoch_summary(self, traces, method="mean", extend_epoch=0):
-        print(method)
+    def epoch_summary(self, traces, method="mean", extend_epoch= (-10*9.7)):
+        #print(method)
         epoch_start = np.array(self.epoch_table["fr"][0::2])
         epoch_end = np.array(self.epoch_table["fr"][1::2]) + extend_epoch
         # method can either be mean or max
@@ -123,7 +125,9 @@ class decode:
                 mean_per_epoch[:, i] = np.sum(traces[:, start:end], axis=1)
         self.epoch_summ = mean_per_epoch[:, 1:]
 
-    def textured_filter(self, traces, texture=1, method="max", exclude_epochs=True):
+    def textured_filter(self, traces, texture=1, method="max", NCC_scaler = 0.14, exclude_epochs=True):
+        traces = self.NCC_filter(traces=traces, NCC_scaler=NCC_scaler, texture=texture)
+        print(traces.shape)
         self.epoch_summary(traces=traces, method=method, extend_epoch=1)
         if texture == 2:
             labels = np.array(self.epoch_labels["epoch_label"])
@@ -150,18 +154,40 @@ class decode:
         predicts = cross_val_predict(pipe, data, labels, cv=cv)
         return (pd.DataFrame({"labels": labels, "texture": texture, "predicts": predicts, "scores": scores}))
 
-    def decoder_score_table(self, data_type, dt_name, method="max", decoder="logreg"):
-        self.textured_filter(traces=data_type, texture=0, method=method)
+
+    def NCC_curve(self):
+        NCC_scalers = np.linspace(0.01, 0.3, 20)
+        df_list = [0] * len(NCC_scalers)
+        for i, N in enumerate(NCC_scalers):
+            df_list[i] = self.decoder_score_table(data_type=self.Spikes, dt_name="Spikes", NCC_scaler=N, method="sum", save=False).T.loc["scores"]
+            print(N)
+            print(self.Spikes.shape)
+        df_list = pd.concat(df_list, axis=1).T
+        self.NCC_scores = df_list.set_index(NCC_scalers)
+        self.NCC_scores.plot()
+        plt.savefig(fname = self.folder + self.dataset_name + "/decoder_results/" + self.dataset_name + "_NCC_curve.png")
+
+
+    def decoder_score_table(self, data_type, dt_name, method="max", decoder="logreg", NCC_scaler=0.14, save = True):
+        self.textured_filter(traces=data_type, texture=0, method=method, NCC_scaler = NCC_scaler)
         non_textured_decoder_output = self.decode_score(data=self.decoder_input[0], labels=self.decoder_input[1],
                                                         texture=self.decoder_input[2], decoder=decoder)
-        self.textured_filter(traces=data_type, texture=1, method=method)
+        self.textured_filter(traces=data_type, texture=1, method=method, NCC_scaler = NCC_scaler)
         textured_decoder_output = self.decode_score(data=self.decoder_input[0], labels=self.decoder_input[1],
                                                     texture=self.decoder_input[2], decoder=decoder)
         self.decoder_scores = pd.concat([non_textured_decoder_output, textured_decoder_output])
-        #print(self.decoder_scores.groupby(['texture', 'labels']).mean())
-        #print(self.decoder_scores.groupby(['texture']).mean())
+        self.decoder_scores = self.decoder_scores.groupby(['texture', 'labels']).mean()
+        self.decoder_scores = self.decoder_scores.groupby(['texture']).mean()
 
-        np.save(file=self.folder + self.dataset_name + "/decoder_results/" + self.dataset_name + "_" + self.deconvolution_method + "_" + dt_name + "_" + decoder + "_" + method + "_decoder_score.npy", arr=self.decoder_scores)
+        print(self.decoder_scores)
+
+        if save == False:
+            return(self.decoder_scores)
+
+        if save == True:
+
+            self.decoder_scores.to_csv(self.folder + self.dataset_name + "/decoder_results/" + self.dataset_name + "_" + self.deconvolution_method + "_" + dt_name + "_" + decoder + "_" + method + "_decoder_score.npy")
+
 
     def decode_all_data_types(self, decoder = "logreg"):
         print("Calcium:")

@@ -7,7 +7,7 @@ import os
 
 
 class combined_results():
-    def __init__(self, main_folder, data_type = "Cal", deconvolution_method = "estimated", method = "max", decoder = "logreg"):
+    def __init__(self, main_folder, data_type = "Spikes", deconvolution_method = "estimated", method = "sum", decoder = "logreg"):
         self.main_folder = main_folder
         self.data_type  = data_type
         self.deconvolution_method =deconvolution_method
@@ -32,7 +32,7 @@ class combined_results():
             print(d)
             data_frame = self.open_data_set(condition_folder=condition_folder, data_type = data_type, dataset_name = d, decoder = decoder, method = method)
             data_frame.columns = ['Real_labels', 'Texture', 'predicted_label', 'score']
-            data_frame["Rearing_condition"] = np.repeat(condition_folder [5:7], data_frame.shape[0])
+            data_frame["Rearing_condition"] = np.repeat(condition_folder [6:8], data_frame.shape[0])
             data_frame["data_set"] = np.repeat(d, data_frame.shape[0])
             means = data_frame.groupby(['Texture', 'Real_labels']).mean()
             print(means.groupby(['Texture']).mean())
