@@ -106,7 +106,7 @@ class decode:
         #print(self.epoch_labels["epoch_name"])
         #print(self.epoch_labels["epoch_label"])
 
-    def epoch_summary(self, traces, method="mean", extend_epoch= (-10*9.7)):
+    def epoch_summary(self, traces, method="mean", extend_epoch= (0)):
         #print(method)
         epoch_start = np.array(self.epoch_table["fr"][0::2])
         epoch_end = np.array(self.epoch_table["fr"][1::2]) + extend_epoch
@@ -128,7 +128,7 @@ class decode:
     def textured_filter(self, traces, texture=1, method="max", NCC_scaler = 0.14, exclude_epochs=True):
         traces = self.NCC_filter(traces=traces, NCC_scaler=NCC_scaler, texture=texture)
         print(traces.shape)
-        self.epoch_summary(traces=traces, method=method, extend_epoch=1)
+        self.epoch_summary(traces=traces, method=method, extend_epoch=0)
         if texture == 2:
             labels = np.array(self.epoch_labels["epoch_label"])
             data = self.epoch_summ

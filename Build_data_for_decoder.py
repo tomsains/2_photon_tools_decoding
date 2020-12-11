@@ -147,7 +147,8 @@ class data_set:
         epoch["fr"] = ((epoch["sec"] + offset) * (self.sample_rate)).astype(int)
         self.epoch = epoch
 
-    def create_epoch_vector(self, extend_epoch=(10 * 9.7)):
+    def create_epoch_vector(self, extend_epoch=(2 * 9.7)):
+        #extend_epoch_vector_usually 10*9.7
         print("creating epoch_vectors")
         start = self.epoch["fr"].iloc[list(range(0, self.epoch.shape[0], 2))].values
         end = self.epoch["fr"].iloc[list(range(1, self.epoch.shape[0], 2))].values
